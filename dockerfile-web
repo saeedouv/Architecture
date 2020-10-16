@@ -1,0 +1,38 @@
+# .NET Core SDK
+FROM mcr.microsoft.com/dotnet/core/sdk:3.1.403-alpine3.12 AS aspnetcore-build
+
+# Copy Projects
+COPY source/Application/Architecture.Application.csproj ./source/Application/
+COPY source/Database/Architecture.Database.csproj ./source/Database/
+COPY source/Domain/Architecture.Domain.csproj ./source/Domain/
+COPY source/Model/Architecture.Model.csproj ./source/Model/
+COPY source/Web/Architecture.Web.csproj ./source/Web/
+
+# .NET Core Restore
+RUN dotnet restore ./source/Web/Architecture.Web.csproj
+
+# Copy All Files
+COPY source ./source/
+
+# .NET Core Publish
+RUN dotnet publish ./source/Web/Architecture.Web.csproj -c Release -o /dist
+
+# Angular
+FROM node:14.13.1-alpine3.12 AS angular-build
+ARG ANGULAR_ENVIRONMENT
+WORKDIR ./source/Web/Frontend/
+COPY source/Web/Frontend/package.json ./
+RUN npm run restore
+COPY source/Web/Frontend ./
+RUN npm run $ANGULAR_ENVIRONMENT
+
+# ASP.NET Core
+FROM mcr.microsoft.com/dotnet/core/aspnet:3.1.9-alpine3.12
+RUN apk add --no-cache icu-libs
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+WORKDIR /app
+COPY --from=aspnetcore-build /dist .
+COPY --from=angular-build /source/Web/Frontend/dist ./Frontend/dist
+EXPOSE 80
+EXPOSE 443
+ENTRYPOINT ["dotnet", "Architecture.Web.dll"]
